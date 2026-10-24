@@ -1,0 +1,308 @@
+{% extends "base.html" %}
+
+{% block title %}Hóa đơn {{ invoice.invoice_number }}{% endblock %}
+
+{% block head %}
+<style>
+    @media print {
+        nav, footer, .no-print, .btn, .breadcrumb {
+            display: none !important;
+        }
+        body {
+            background-color: #fff !important;
+            color: #000 !important;
+        }
+        .card {
+            border: none !important;
+            box-shadow: none !important;
+        }
+        .container-fluid {
+            padding: 0 !important;
+        }
+        .invoice-box {
+            padding: 0 !important;
+            border: none !important;
+        }
+    }
+    .invoice-badge-paid {
+        border: 2px solid #198754;
+        color: #198754;
+        font-size: 1.1rem;
+        font-weight: 800;
+        letter-spacing: 2px;
+        padding: 5px 15px;
+        text-transform: uppercase;
+        display: inline-block;
+        transform: rotate(-5deg);
+    }
+    .invoice-badge-pending {
+        border: 2px solid #ffc107;
+        color: #b78103;
+        font-size: 1.1rem;
+        font-weight: 800;
+        letter-spacing: 2px;
+        padding: 5px 15px;
+        text-transform: uppercase;
+        display: inline-block;
+        transform: rotate(-5deg);
+    }
+    .invoice-badge-overdue {
+        border: 2px solid #dc3545;
+        color: #dc3545;
+        font-size: 1.1rem;
+        font-weight: 800;
+        letter-spacing: 2px;
+        padding: 5px 15px;
+        text-transform: uppercase;
+        display: inline-block;
+        transform: rotate(-5deg);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-10">
+        <!-- THANH CÔNG CỤ THAO TÁC -->
+        <div class="d-flex justify-content-between align-items-center mb-3 no-print">
+            <a href="{{ url_for('invoices_list') }}" class="btn btn-outline-secondary btn-sm">
+                <i class="fa-solid fa-arrow-left me-1"></i> Danh sách Hóa đơn
+            </a>
+            <div class="d-flex gap-2">
+                <button onclick="window.print()" class="btn btn-outline-dark btn-sm">
+                    <i class="fa-solid fa-print me-1"></i> In Hóa đơn / Xuất PDF
+                </button>
+                {% if invoice.status != 'PAID' %}
+                <button type="button" class="btn btn-success btn-sm fw-bold" data-bs-toggle="modal" data-bs-target="#paymentModal">
+                    <i class="fa-solid fa-credit-card me-1"></i> Xác nhận Thanh toán
+                </button>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- MẪU HÓA ĐƠN ĐIỆN TỬ CHUẨN VAT -->
+        <div class="card border-0 shadow-sm p-4 p-md-5 invoice-box bg-white">
+            <!-- ĐẦU TRANG HÓA ĐƠN -->
+            <div class="row border-bottom pb-4 mb-4 align-items-center">
+                <div class="col-md-7">
+                    <div class="d-flex align-items-center mb-2">
+                        <i class="fa-solid fa-cloud-bolt text-primary fs-1 me-3"></i>
+                        <div>
+                            <h4 class="fw-bold mb-0 text-primary">SMART BILLING CORPORATION</h4>
+                            <small class="text-muted">CÔNG TY CỔ PHẦN CÔNG NGHỆ VÀ DỊCH VỤ ĐÁM MÂY</small>
+                        </div>
+                    </div>
+                    <p class="small text-muted mb-0">
+                        <strong>Địa chỉ:</strong> Tòa nhà Innovation Center, Khu Công nghệ cao, Hà Nội<br>
+                        <strong>Mã số thuế:</strong> 0109988776 | <strong>Hotline:</strong> 1900 6868<br>
+                        <strong>Email:</strong> billing@smartcloud.vn | <strong>Website:</strong> https://billing.smartcloud.vn
+                    </p>
+                </div>
+                <div class="col-md-5 text-md-end mt-3 mt-md-0">
+                    <h3 class="fw-bold text-dark text-uppercase mb-1">HÓA ĐƠN GIÁ TRỊ GIA TĂNG</h3>
+                    <div class="text-muted small mb-2">(VAT INVOICE / BẢN THỂ HIỆN HÓA ĐƠN ĐIỆN TỬ)</div>
+                    <div class="fs-5 fw-bold text-danger mb-1">Số: {{ invoice.invoice_number }}</div>
+                    <div class="small text-muted">Ngày ký: {{ invoice.issue_date | date_format }}</div>
+                    
+                    <div class="mt-2">
+                        {% if invoice.status == 'PAID' %}
+                            <div class="invoice-badge-paid"><i class="fa-solid fa-check-circle me-1"></i> ĐÃ THANH TOÁN</div>
+                        {% elif invoice.status == 'PENDING' %}
+                            <div class="invoice-badge-pending"><i class="fa-solid fa-clock me-1"></i> CHỜ THANH TOÁN</div>
+                        {% elif invoice.status == 'OVERDUE' %}
+                            <div class="invoice-badge-overdue"><i class="fa-solid fa-exclamation-triangle me-1"></i> QUÁ HẠN</div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- THÔNG TIN KHÁCH HÀNG -->
+            <div class="row mb-4">
+                <div class="col-md-6">
+                    <h6 class="fw-bold text-muted text-uppercase small mb-2">Đơn vị nhận hóa đơn (Buyer):</h6>
+                    <h5 class="fw-bold text-dark mb-1">{{ invoice.company or invoice.customer_name }}</h5>
+                    <p class="small text-muted mb-0">
+                        <strong>Người liên hệ:</strong> {{ invoice.customer_name }} ({{ invoice.customer_code }})<br>
+                        <strong>Mã số thuế:</strong> {{ invoice.tax_id or 'Không có' }}<br>
+                        <strong>Địa chỉ:</strong> {{ invoice.address or 'Việt Nam' }}<br>
+                        <strong>Email:</strong> {{ invoice.email }} | <strong>Điện thoại:</strong> {{ invoice.phone }}
+                    </p>
+                </div>
+                <div class="col-md-6 text-md-end mt-3 mt-md-0">
+                    <h6 class="fw-bold text-muted text-uppercase small mb-2">Thông tin thanh toán:</h6>
+                    <p class="small text-muted mb-0">
+                        <strong>Hạn chót thanh toán:</strong> <span class="fw-bold text-danger">{{ invoice.due_date | date_format }}</span><br>
+                        <strong>Hình thức thanh toán:</strong> {{ invoice.payment_method }}<br>
+                        <strong>Số tài khoản:</strong> 1903.8888.6666.99<br>
+                        <strong>Ngân hàng:</strong> Techcombank - Chi nhánh Thăng Long, HN<br>
+                        <strong>Chủ tài khoản:</strong> CÔNG TY CP CÔNG NGHỆ VÀ DỊCH VỤ ĐÁM MÂY
+                    </p>
+                </div>
+            </div>
+
+            <!-- BẢNG CHI TIẾT HÀNG HÓA DỊCH VỤ -->
+            <div class="table-responsive mb-4">
+                <table class="table table-bordered align-middle">
+                    <thead class="table-light text-center">
+                        <tr>
+                            <th style="width: 5%;">STT</th>
+                            <th style="width: 45%;">Tên Hàng hóa / Dịch vụ</th>
+                            <th style="width: 10%;">ĐVT</th>
+                            <th style="width: 10%;">Số lượng</th>
+                            <th style="width: 15%;">Đơn giá (VND)</th>
+                            <th style="width: 15%;">Thành tiền (VND)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in items %}
+                        <tr>
+                            <td class="text-center">{{ loop.index }}</td>
+                            <td>
+                                <div class="fw-semibold text-dark">{{ item.item_name }}</div>
+                                <small class="text-muted">Thuế suất GTGT: {{ item.tax_rate }}%</small>
+                            </td>
+                            <td class="text-center">Gói/Tháng</td>
+                            <td class="text-center">{{ item.quantity }}</td>
+                            <td class="text-end">{{ item.unit_price | vnd }}</td>
+                            <td class="text-end fw-bold">{{ item.amount | vnd }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- TỔNG KẾT TIỀN HÓA ĐƠN -->
+            <div class="row justify-content-end mb-4">
+                <div class="col-md-6">
+                    <table class="table table-sm table-borderless">
+                        <tr>
+                            <td class="text-muted">Cộng tiền hàng (Subtotal):</td>
+                            <td class="text-end fw-semibold">{{ invoice.subtotal | vnd }}</td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted">Tiền thuế GTGT (VAT):</td>
+                            <td class="text-end fw-semibold">{{ invoice.tax_amount | vnd }}</td>
+                        </tr>
+                        {% if invoice.discount_amount > 0 %}
+                        <tr>
+                            <td class="text-muted">Chiết khấu thương mại:</td>
+                            <td class="text-end fw-semibold text-success">-{{ invoice.discount_amount | vnd }}</td>
+                        </tr>
+                        {% endif %}
+                        <tr class="border-top border-dark">
+                            <td class="fw-bold fs-5 text-dark">Tổng tiền thanh toán:</td>
+                            <td class="text-end fw-bold fs-4 text-primary">{{ invoice.total_amount | vnd }}</td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+
+            <!-- GHI CHÚ VÀ CHỮ KÝ SỐ -->
+            <div class="row pt-3 border-top mt-4">
+                <div class="col-md-6">
+                    <h6 class="fw-bold text-muted small text-uppercase mb-1">Ghi chú:</h6>
+                    <p class="small text-muted">{{ invoice.notes or 'Cảm ơn quý khách hàng đã tin tưởng sử dụng dịch vụ của chúng tôi.' }}</p>
+                    
+                    <div class="p-3 bg-light rounded border d-inline-block mt-2">
+                        <div class="d-flex align-items-center">
+                            <i class="fa-solid fa-qrcode fs-1 me-3 text-dark"></i>
+                            <div class="small">
+                                <strong>Quét mã QR để kiểm tra tính hợp lệ:</strong><br>
+                                <span class="text-muted">Hóa đơn điện tử khởi tạo từ máy chủ SmartBilling</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 text-center mt-3 mt-md-0">
+                    <div class="fw-bold text-uppercase text-dark">NGƯỜI BÁN HÀNG / ĐƠN VỊ CUNG CẤP</div>
+                    <div class="small text-muted">(Ký điện tử, ghi rõ họ tên)</div>
+                    <div class="my-3 py-2">
+                        <div class="border border-success text-success p-2 rounded d-inline-block small">
+                            <i class="fa-solid fa-signature me-1"></i> Digital Signature Validated<br>
+                            <strong>CÔNG TY CP CÔNG NGHỆ VÀ DỊCH VỤ ĐÁM MÂY</strong><br>
+                            <small>Ký ngày: {{ invoice.issue_date | date_format }}</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- LỊCH SỬ THANH TOÁN (NẾU CÓ) -->
+            {% if payments %}
+            <div class="mt-4 pt-4 border-top no-print">
+                <h6 class="fw-bold text-success mb-3"><i class="fa-solid fa-clock-rotate-left me-2"></i>Lịch sử Giao dịch Thanh toán</h6>
+                <div class="table-responsive">
+                    <table class="table table-sm table-striped">
+                        <thead>
+                            <tr>
+                                <th>Thời gian</th>
+                                <th>Số tiền</th>
+                                <th>Hình thức</th>
+                                <th>Mã giao dịch</th>
+                                <th>Ghi chú</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for p in payments %}
+                            <tr>
+                                <td>{{ p.payment_date | date_format('%d/%m/%Y %H:%M') }}</td>
+                                <td class="fw-bold text-success">{{ p.amount | vnd }}</td>
+                                <td>{{ p.payment_method }}</td>
+                                <td><code>{{ p.transaction_ref }}</code></td>
+                                <td>{{ p.notes }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- MODAL XÁC NHẬN THANH TOÁN -->
+<div class="modal fade" id="paymentModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form action="{{ url_for('invoice_pay', invoice_id=invoice.id) }}" method="POST">
+            <div class="modal-content">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title"><i class="fa-solid fa-cash-register me-2"></i>Xác nhận Thu tiền Hóa đơn</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Xác nhận thanh toán cho hóa đơn: <strong>{{ invoice.invoice_number }}</strong></p>
+                    <div class="alert alert-info py-2">
+                        Số tiền cần thanh toán: <strong class="fs-5 text-primary">{{ invoice.total_amount | vnd }}</strong>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Phương thức thanh toán</label>
+                        <select name="payment_method" class="form-select">
+                            <option value="Bank Transfer">Chuyển khoản Ngân hàng (Bank Transfer)</option>
+                            <option value="Cash">Tiền mặt (Cash)</option>
+                            <option value="Credit Card">Thẻ tín dụng (Credit Card)</option>
+                            <option value="MoMo/VNPay">Ví điện tử MoMo / VNPay</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Mã giao dịch / Mã tham chiếu</label>
+                        <input type="text" name="transaction_ref" class="form-control" placeholder="Ví dụ: VCB-20261024-9988">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Ghi chú thanh toán</label>
+                        <textarea name="note" class="form-control" rows="2" placeholder="Ghi nhận thanh toán từ khách hàng..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
+                    <button type="submit" class="btn btn-success fw-bold">
+                        <i class="fa-solid fa-check me-1"></i> Xác nhận Đã thanh toán
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

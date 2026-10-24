@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}Báo cáo Doanh thu & Thống kê{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h3 class="fw-bold text-dark mb-1">
+            <i class="fa-solid fa-chart-column text-primary me-2"></i>Báo cáo Doanh thu & Dòng tiền
+        </h3>
+        <p class="text-muted mb-0">Thống kê theo chu kỳ tháng, phân bổ trạng thái thanh toán và hiệu quả thu cước</p>
+    </div>
+</div>
+
+<div class="row g-4 mb-4">
+    <div class="col-lg-8">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white py-3">
+                <h6 class="m-0 fw-bold text-dark"><i class="fa-solid fa-table me-2 text-primary"></i>Doanh thu theo chu kỳ phát hành</h6>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Tháng</th>
+                            <th class="text-center">Số lượng HĐ</th>
+                            <th class="text-end">Đã thu (PAID)</th>
+                            <th class="text-end">Chờ thu (PENDING)</th>
+                            <th class="text-end">Tổng phát hành</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for m in monthly_data %}
+                        <tr>
+                            <td class="fw-bold">{{ m.month }}</td>
+                            <td class="text-center"><span class="badge bg-secondary">{{ m.invoice_count }}</span></td>
+                            <td class="text-end fw-semibold text-success">{{ m.paid_amount | vnd }}</td>
+                            <td class="text-end fw-semibold text-warning">{{ m.pending_amount | vnd }}</td>
+                            <td class="text-end fw-bold text-primary">{{ (m.paid_amount + m.pending_amount) | vnd }}</td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="5" class="text-center py-4 text-muted">Chưa có dữ liệu thống kê tháng.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white py-3">
+                <h6 class="m-0 fw-bold text-dark"><i class="fa-solid fa-pie-chart me-2 text-primary"></i>Phân bổ trạng thái Hóa đơn</h6>
+            </div>
+            <div class="card-body">
+                <ul class="list-group list-group-flush">
+                    {% for s in status_dist %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center px-0">
+                        <div>
+                            <span class="fw-semibold">{{ s.status }}</span>
+                            <div class="small text-muted">{{ s.count }} hóa đơn</div>
+                        </div>
+                        <span class="fw-bold">{{ s.total | vnd }}</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

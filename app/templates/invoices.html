@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+
+{% block title %}Quản lý Hóa đơn{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h3 class="fw-bold text-dark mb-1">
+            <i class="fa-solid fa-file-invoice text-primary me-2"></i>Quản lý Hóa đơn & Bán cước
+        </h3>
+        <p class="text-muted mb-0">Tra cứu, lọc trạng thái, xuất bản in và xử lý thanh toán hóa đơn</p>
+    </div>
+    <div>
+        <a href="{{ url_for('invoice_create') }}" class="btn btn-primary">
+            <i class="fa-solid fa-plus me-1"></i> Tạo Hóa đơn mới
+        </a>
+    </div>
+</div>
+
+<!-- THANH CÔNG CỤ TÌM KIẾM & BỘ LỌC -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body">
+        <form method="GET" action="{{ url_for('invoices_list') }}" class="row g-3 align-items-center">
+            <div class="col-md-5">
+                <div class="input-group">
+                    <span class="input-group-text bg-white"><i class="fa-solid fa-magnifying-glass text-muted"></i></span>
+                    <input type="text" name="q" class="form-control" placeholder="Tìm theo Số HĐ, Tên KH, Tên công ty..." value="{{ search_query }}">
+                </div>
+            </div>
+            <div class="col-md-4">
+                <select name="status" class="form-select">
+                    <option value="">-- Tất cả trạng thái thanh toán --</option>
+                    <option value="PAID" {% if status_filter == 'PAID' %}selected{% endif %}>Đã thanh toán (PAID)</option>
+                    <option value="PENDING" {% if status_filter == 'PENDING' %}selected{% endif %}>Chờ thanh toán (PENDING)</option>
+                    <option value="OVERDUE" {% if status_filter == 'OVERDUE' %}selected{% endif %}>Quá hạn thanh toán (OVERDUE)</option>
+                    <option value="DRAFT" {% if status_filter == 'DRAFT' %}selected{% endif %}>Bản nháp (DRAFT)</option>
+                    <option value="CANCELLED" {% if status_filter == 'CANCELLED' %}selected{% endif %}>Đã hủy (CANCELLED)</option>
+                </select>
+            </div>
+            <div class="col-md-3 d-flex gap-2">
+                <button type="submit" class="btn btn-outline-primary flex-grow-1">
+                    <i class="fa-solid fa-filter me-1"></i> Lọc
+                </button>
+                <a href="{{ url_for('invoices_list') }}" class="btn btn-outline-secondary" title="Đặt lại bộ lọc">
+                    <i class="fa-solid fa-rotate-right"></i>
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- BẢNG DANH SÁCH HÓA ĐƠN -->
+<div class="card border-0 shadow-sm">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th scope="col" class="ps-3">Số Hóa Đơn</th>
+                    <th scope="col">Khách hàng</th>
+                    <th scope="col">Doanh nghiệp / Đơn vị</th>
+                    <th scope="col">Ngày lập</th>
+                    <th scope="col">Hạn TT</th>
+                    <th scope="col" class="text-end">Tổng tiền (VND)</th>
+                    <th scope="col" class="text-center">Trạng thái</th>
+                    <th scope="col" class="text-center pe-3">Hành động</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for inv in invoices %}
+                <tr>
+                    <td class="ps-3">
+                        <a href="{{ url_for('invoice_detail', invoice_id=inv.id) }}" class="fw-bold text-decoration-none">
+                            <i class="fa-solid fa-file-invoice me-1 text-primary"></i>{{ inv.invoice_number }}
+                        </a>
+                    </td>
+                    <td>
+                        <span class="fw-semibold">{{ inv.customer_name }}</span>
+                        <div class="small text-muted">{{ inv.customer_code }}</div>
+                    </td>
+                    <td>{{ inv.company or 'Khách lẻ' }}</td>
+                    <td>{{ inv.issue_date | date_format }}</td>
+                    <td>
+                        <span class="{% if inv.status == 'OVERDUE' %}text-danger fw-bold{% endif %}">
+                            {{ inv.due_date | date_format }}
+                        </span>
+                    </td>
+                    <td class="text-end fw-bold text-dark">{{ inv.total_amount | vnd }}</td>
+                    <td class="text-center">
+                        {% if inv.status == 'PAID' %}
+                            <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1"><i class="fa-solid fa-circle-check me-1"></i>ĐÃ THU</span>
+                        {% elif inv.status == 'PENDING' %}
+                            <span class="badge bg-warning-subtle text-warning border border-warning-subtle px-2 py-1"><i class="fa-solid fa-clock me-1"></i>CHỜ THU</span>
+                        {% elif inv.status == 'OVERDUE' %}
+                            <span class="badge bg-danger-subtle text-danger border border-danger-subtle px-2 py-1"><i class="fa-solid fa-triangle-exclamation me-1"></i>QUÁ HẠN</span>
+                        {% elif inv.status == 'DRAFT' %}
+                            <span class="badge bg-secondary-subtle text-secondary px-2 py-1">NHÁP</span>
+                        {% else %}
+                            <span class="badge bg-dark px-2 py-1">{{ inv.status }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-center pe-3">
+                        <div class="btn-group btn-group-sm">
+                            <a href="{{ url_for('invoice_detail', invoice_id=inv.id) }}" class="btn btn-outline-primary" title="Xem chi tiết & In Hóa đơn">
+                                <i class="fa-solid fa-print"></i>
+                            </a>
+                            <form action="{{ url_for('invoice_delete', invoice_id=inv.id) }}" method="POST" onsubmit="return confirm('Bạn có chắc chắn muốn xóa hóa đơn {{ inv.invoice_number }}?');" class="d-inline">
+                                <button type="submit" class="btn btn-outline-danger" title="Xóa hóa đơn">
+                                    <i class="fa-solid fa-trash"></i>
+                                </button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="8" class="text-center py-5 text-muted">
+                        <i class="fa-solid fa-box-open fs-2 mb-2 d-block text-secondary"></i>
+                        Không tìm thấy hóa đơn nào phù hợp với điều kiện tìm kiếm.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
