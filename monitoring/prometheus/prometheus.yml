@@ -1,0 +1,44 @@
+# =============================================================================
+# CẤU HÌNH THU THẬP CHỈ SỐ GIÁM SÁT PROMETHEUS (PROMETHEUS.YML)
+# Môn học: Triển khai và Quản trị Hệ thống Phần mềm (TKQT HTPM K23)
+# Đề tài 18: Hệ thống Quản lý Hóa đơn / Billing
+# Cột mốc: Bước 4 - Commit 2
+# =============================================================================
+
+global:
+  scrape_interval: 15s      # Chu kỳ cào dữ liệu định kỳ mỗi 15 giây
+  evaluation_interval: 15s  # Chu kỳ tính toán quy tắc cảnh báo
+  scrape_timeout: 10s
+
+scrape_configs:
+  # 1. Giám sát bản thân máy chủ Prometheus
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # 2. Giám sát ứng dụng Web Quản lý Hóa đơn (Flask Web Metrics)
+  - job_name: 'billing-web'
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+    static_configs:
+      - targets: ['billing-web:5000']
+        labels:
+          app: 'billing-web'
+          env: 'production'
+
+  # 3. Giám sát tài nguyên phần cứng Container bằng cAdvisor (CPU, RAM, Disk, Network)
+  - job_name: 'cadvisor'
+    scrape_interval: 15s
+    static_configs:
+      - targets: ['billing-cadvisor:8080']
+        labels:
+          role: 'container-metrics'
+
+  # 4. Giám sát chỉ số Cơ sở dữ liệu PostgreSQL qua postgres_exporter
+  - job_name: 'postgres-exporter'
+    scrape_interval: 15s
+    static_configs:
+      - targets: ['billing-postgres-exporter:9187']
+        labels:
+          db: 'billing-db'
+          role: 'postgresql-metrics'
