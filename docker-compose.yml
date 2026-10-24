@@ -1,0 +1,296 @@
+# =============================================================================
+# HỆ THỐNG ĐIỀU PHỐI CONTAINER TOÀN DIỆN (DOCKER COMPOSE)
+# Môn học: Triển khai và Quản trị Hệ thống Phần mềm (TKQT HTPM K23)
+# Đề tài 18: Hệ thống Quản lý Hóa đơn / Billing
+# Tác giả: Nhóm sinh viên thực hiện
+# =============================================================================
+
+version: '3.8'
+
+services:
+  # ---------------------------------------------------------------------------
+  # 1. CƠ SỞ DỮ LIỆU POSTGRESQL 16 (POSTGRESQL DATABASE ENGINE)
+  # Hardening: Hoạt động trong mạng backend-net cô lập (internal: true)
+  # Cấm công khai cổng 5432 ra bên ngoài máy chủ Host
+  # ---------------------------------------------------------------------------
+  billing-db:
+    image: postgres:16-alpine
+    container_name: billing-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-billing_db}
+      POSTGRES_USER: ${DB_USER:-billing_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-BillingSecure2026!Pass}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - backend-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-billing_user} -d ${DB_NAME:-billing_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.80'
+          memory: 512M
+
+  # ---------------------------------------------------------------------------
+  # 2. ỨNG DỤNG WEB QUẢN LÝ HÓA ĐƠN (FLASK WEB APPLICATION)
+  # Hardening: Chạy với Non-Root User (UID 1001), kết nối qua 2 mạng phân tách
+  # ---------------------------------------------------------------------------
+  billing-web:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    container_name: billing-web
+    restart: unless-stopped
+    environment:
+      DB_HOST: billing-db
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-billing_db}
+      DB_USER: ${DB_USER:-billing_user}
+      DB_PASSWORD: ${DB_PASSWORD:-BillingSecure2026!Pass}
+      SECRET_KEY: ${SECRET_KEY:-billing_jwt_super_secret_key_2026}
+      FLASK_DEBUG: "false"
+    depends_on:
+      billing-db:
+        condition: service_healthy
+    networks:
+      - frontend-net
+      - backend-net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.80'
+          memory: 512M
+
+  # ---------------------------------------------------------------------------
+  # 3. CÔNG CỤ QUẢN TRỊ CƠ SỞ DỮ LIỆU PGADMIN 4
+  # Quản trị dữ liệu trực quan qua Web Console
+  # ---------------------------------------------------------------------------
+  billing-pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: billing-pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@billing.local}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-AdminSecure2026!}
+    ports:
+      - "5050:80"
+    depends_on:
+      billing-db:
+        condition: service_healthy
+    networks:
+      - frontend-net
+      - backend-net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 384M
+
+  # ---------------------------------------------------------------------------
+  # 4. NGINX REVERSE PROXY & SECURITY GATEWAY (COMMIT 1)
+  # Cửa ngõ duy nhất mở cổng 80 & 443 ra Internet/Host
+  # ---------------------------------------------------------------------------
+  billing-nginx:
+    image: nginx:1.25-alpine
+    container_name: billing-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - billing-web
+      - billing-pgadmin
+    networks:
+      - frontend-net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 256M
+
+  # ---------------------------------------------------------------------------
+  # 5. POSTGRES EXPORTER (THU THẬP METRICS CƠ SỞ DỮ LIỆU)
+  # ---------------------------------------------------------------------------
+  billing-postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: billing-postgres-exporter
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${DB_USER:-billing_user}:${DB_PASSWORD:-BillingSecure2026!Pass}@billing-db:5432/${DB_NAME:-billing_db}?sslmode=disable"
+    depends_on:
+      billing-db:
+        condition: service_healthy
+    networks:
+      - backend-net
+      - monitor-net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.30'
+          memory: 128M
+
+  # ---------------------------------------------------------------------------
+  # 6. CADVISOR (GIÁM SÁT TÀI NGUYÊN CONTAINER CPU, RAM, NETWORK)
+  # ---------------------------------------------------------------------------
+  billing-cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.47.2
+    container_name: billing-cadvisor
+    restart: unless-stopped
+    privileged: true
+    devices:
+      - /dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    ports:
+      - "8088:8080"
+    networks:
+      - monitor-net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 256M
+
+  # ---------------------------------------------------------------------------
+  # 7. PROMETHEUS SERVER (CỘT MỐC 2 - THU THẬP & LƯU TRỮ METRICS)
+  # ---------------------------------------------------------------------------
+  billing-prometheus:
+    image: prom/prometheus:v2.45.0
+    container_name: billing-prometheus
+    restart: unless-stopped
+    user: "0"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9091:9090"
+    networks:
+      - frontend-net
+      - monitor-net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.60'
+          memory: 512M
+
+  # ---------------------------------------------------------------------------
+  # 8. GRAFANA DASHBOARD TRỰC QUAN HÓA (CỘT MỐC 2)
+  # Tự động nạp Prometheus & Loki Datasource + Billing Dashboard
+  # ---------------------------------------------------------------------------
+  billing-grafana:
+    image: grafana/grafana:10.0.3
+    container_name: billing-grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-AdminSecure2026!}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./monitoring/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./monitoring/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/dashboards:/etc/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    depends_on:
+      - billing-prometheus
+      - billing-loki
+    networks:
+      - frontend-net
+      - monitor-net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.60'
+          memory: 512M
+
+  # ---------------------------------------------------------------------------
+  # 9. LOKI (CỘT MỐC 3 - QUẢN LÝ NHẬT KÝ TẬP TRUNG)
+  # ---------------------------------------------------------------------------
+  billing-loki:
+    image: grafana/loki:2.8.4
+    container_name: billing-loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./logging/loki/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    ports:
+      - "3100:3100"
+    networks:
+      - monitor-net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.60'
+          memory: 512M
+
+  # ---------------------------------------------------------------------------
+  # 10. PROMTAIL (CỘT MỐC 3 - THU THẬP VÀ ĐẨY LOG CONTAINER SANG LOKI)
+  # ---------------------------------------------------------------------------
+  billing-promtail:
+    image: grafana/promtail:2.8.4
+    container_name: billing-promtail
+    restart: unless-stopped
+    command: -config.file=/etc/promtail/config.yml
+    volumes:
+      - ./logging/promtail/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - billing-loki
+    networks:
+      - monitor-net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.40'
+          memory: 256M
+
+# =============================================================================
+# PHÂN TÁCH MẠNG NỘI BỘ DOCKER (DOCKER NETWORKS HARDENING)
+# =============================================================================
+networks:
+  # Mạng ngoài tiếp nhận traffic web và dashboard
+  frontend-net:
+    driver: bridge
+
+  # Mạng CSDL cô lập hoàn toàn (internal: true cấm kết nối từ máy chủ bên ngoài)
+  backend-net:
+    driver: bridge
+    internal: true
+
+  # Mạng thu thập giám sát và ghi log
+  monitor-net:
+    driver: bridge
+
+# =============================================================================
+# VÙNG LƯU TRỮ DỮ LIỆU DÀI HẠN (PERSISTENT VOLUMES)
+# =============================================================================
+volumes:
+  postgres_data:
+  prometheus_data:
+  grafana_data:
+  loki_data:
